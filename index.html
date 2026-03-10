@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Territory Card Printer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- MapLibre GL JS -->
+<link href="https://unpkg.com/maplibre-gl@5.19.0/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://unpkg.com/maplibre-gl@5.19.0/dist/maplibre-gl.js"></script>
+<!-- PMTiles protocol for self-hosted vector tiles -->
+<script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
+<!-- Protomaps basemap styles -->
+<script src="https://unpkg.com/@protomaps/basemaps@5/dist/basemaps.js"></script>
+<!-- Turf.js geospatial helpers -->
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
+<!-- JSZip for reading KMZ files -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<!-- toGeoJSON KML/KMZ parser — UMD build exposes window.toGeoJSON -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/togeojson/0.16.0/togeojson.min.js"></script>
+<!-- jsPDF for PDF generation -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <link rel="stylesheet" href="styles.css">
+
+    <style>
+        /* ── Base ────────────────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            margin: 0; padding: 0;
+            background: #2c3347;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;        /* dynamic viewport height — safe on mobile */
+            overflow: hidden;
+        }
+
+        /* ── Top toolbar ─────────────────────────────────────────── */
+        #toolbar {
+            flex-shrink: 0;
+            height: 52px;
+            background: #1a2236;
+            z-index: 900;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+        }
+
+        .tool-btn {
+            height: 36px;
+            padding: 0 16px;
+            border-radius: 7px;
+            border: 1.5px solid rgba(255,255,255,0.18);
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            transition: background 0.15s, border-color 0.15s;
+            white-space: nowrap;
+        }
+        .tool-btn:hover  { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.4); }
+        .tool-btn.active { background: #1a6fc4; border-color: #1a6fc4; }
+        .tool-btn:disabled { opacity: 0.38; cursor: not-allowed; }
+        #printOneBtn { display: none; }
+        /* Badge lives inside toolbar — neutralise any fixed-position rules from styles.css */
+        #kmzFilenameBadge { position: static !important; top: auto !important; left: auto !important; }
+
+        /* Style dropdown */
+        #styleWrap { position: relative; height: 36px; }
+        #styleWrap select {
+            height: 36px;
+            padding: 0 30px 0 12px;
+            border-radius: 7px;
+            border: 1.5px solid rgba(255,255,255,0.18);
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+        }
+        #styleWrap select option { background: #1a2236; color: #fff; }
+        #styleWrap::after {
+            content: '▾';
+            position: absolute;
+            right: 10px; top: 50%;
+            transform: translateY(-50%);
+            color: #fff;
+            pointer-events: none;
+            font-size: 12px;
+        }
+
+
+        /* ── Card stage — fills remaining viewport below toolbar ─── */
+        #card-stage {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            overflow: hidden;
+        }
+
+        /* ── The card itself ─────────────────────────────────────── */
+        /* 152.4:101.6 = ~1.5:1 landscape ratio.                     */
+        /* We use container-query-style sizing via CSS only:          */
+        /* width is constrained by stage width, height by stage height*/
+        #territory-card-frame {
+            /* Fill as much of the stage as possible while keeping ratio */
+            width: min(
+                calc(100%),                          /* limited by stage width  */
+                calc((100vh - 52px - 32px) * (152.4 / 101.6))  /* limited by stage height */
+            );
+            aspect-ratio: 152.4 / 101.6;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            font-family: 'Times New Roman', Times, serif;
+            color: #000;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            background: #fff;
+            overflow: hidden;
+        }
+
+        /* Map window sits between header and footer — fills remaining space */
+        #card-window {
+            flex: 1;
+            min-height: 0;
+            position: relative;
+            border-left: 1px solid #000;
+            border-right: 1px solid #000;
+            overflow: hidden;
+        }
+
+        /* The MapLibre map fills card-window exactly */
+        #map {
+            position: absolute;
+            inset: 0;
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        /* ── Side panel ──────────────────────────────────────────── */
+        #sidePanel {
+            position: fixed;
+            top: 52px; right: -320px;
+            width: 300px;
+            height: calc(100% - 52px);
+            background: #fff;
+            box-shadow: -3px 0 16px rgba(0,0,0,0.18);
+            z-index: 850;
+            display: flex;
+            flex-direction: column;
+            transition: right 0.28s cubic-bezier(0.4,0,0.2,1);
+        }
+        #sidePanel.open { right: 0; }
+
+        #sidePanelHeader {
+            padding: 12px 14px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #f7f9fc;
+            flex-shrink: 0;
+        }
+        #sidePanelHeader span { font-weight: 700; font-size: 14px; color: #222; }
+        #closePanelBtn {
+            background: none; border: none; font-size: 18px;
+            cursor: pointer; color: #666; line-height: 1; padding: 0 4px;
+        }
+        #closePanelBtn:hover { color: #222; }
+
+        #panelPrintBar {
+            padding: 8px 12px;
+            border-bottom: 1px solid #e0e0e0;
+            display: none;
+            gap: 8px;
+            align-items: center;
+            background: #eef4ff;
+            flex-shrink: 0;
+        }
+        #panelPrintBar.visible { display: flex; }
+        #printSelectedBtn {
+            flex: 1; height: 34px;
+            background: #1a6fc4; color: #fff;
+            border: none; border-radius: 6px;
+            font-size: 13px; font-weight: 700; cursor: pointer;
+        }
+        #printSelectedBtn:hover { background: #155a9e; }
+        #selCount { font-size: 12px; color: #555; white-space: nowrap; }
+
+        #selectAllRow {
+            padding: 6px 14px;
+            border-bottom: 1px solid #eee;
+            display: flex; align-items: center; gap: 8px;
+            font-size: 13px; color: #444;
+            cursor: pointer; background: #fafafa; flex-shrink: 0;
+        }
+        #selectAllRow input { cursor: pointer; }
+        #sidePanelInner { flex: 1; overflow-y: auto; padding: 4px 0; }
+
+        .side-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 9px 14px; cursor: pointer;
+            font-size: 13px; border-bottom: 1px solid #f0f0f0;
+            transition: background 0.12s;
+        }
+        .side-item:hover { background: #f0f6ff; }
+        .side-item.active { background: #ddeeff; font-weight: 700; }
+        .side-item input[type=checkbox] { cursor: pointer; flex-shrink: 0; }
+        .side-item-label { flex: 1; }
+
+        /* ── Progress overlay ─────────────────────────────────────── */
+        #printOverlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.55);
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        .loader-box {
+            background: #fff; border-radius: 12px;
+            padding: 32px 40px; min-width: 300px;
+            text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        #printStatus { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #222; }
+        .progress-bar { height: 10px; background: #e0e0e0; border-radius: 5px; overflow: hidden; }
+        #progressFill { height: 100%; background: #1a6fc4; border-radius: 5px; transition: width 0.3s; width: 0%; }
+
+        /* ── Mobile tweaks ───────────────────────────────────────── */
+        @media (max-width: 600px) {
+            #toolbar {
+                height: 52px;
+                flex-wrap: nowrap;       /* single row always */
+                padding: 4px 6px;
+                gap: 4px;
+            }
+            /* All buttons share the row equally */
+            .tool-btn {
+                flex: 1;
+                height: 42px;
+                padding: 0;
+                font-size: 18px;         /* bigger emoji */
+                gap: 0;
+                justify-content: center;
+                border-radius: 8px;
+            }
+            /* Hide all text labels — emoji only on mobile */
+            .tool-btn .btn-label { display: none; }
+            /* Style dropdown gets a fixed share too */
+            #styleWrap { flex: 1; height: 42px; }
+            #styleWrap select { width: 100%; height: 42px; font-size: 13px; padding: 0 22px 0 4px; }
+
+            /* KMZ badge — small, doesn't steal button space */
+            #kmzFilenameBadge {
+                flex: 0 0 auto;
+                max-width: 80px;
+                font-size: 10px;
+            }
+            #card-stage { padding: 4px; }
+            /* Toolbar is fixed single-row 52px — card calc stays the same */
+            #territory-card-frame {
+                width: min(
+                    calc(100%),
+                    calc((100dvh - 52px - 8px) * (152.4 / 101.6))
+                );
+            }
+            #sidePanel { width: 85vw; right: -86vw; top: 52px; height: calc(100% - 52px); }
+            .loader-box { min-width: unset; width: 80vw; padding: 24px 20px; }
+        }
+
+        @media (max-width: 380px) {
+            .tool-btn { font-size: 16px; }
+            #styleWrap select { font-size: 14px; }
+        }
+    </style>
+</head>
+<body>
+
+    <input type="file" id="fileInput" accept=".kmz,.kml" style="display:none;">
+
+    <!-- ── Top toolbar ─────────────────────────────────────────────── -->
+    <div id="toolbar">
+        <!-- 1. Add KMZ -->
+        <button class="tool-btn" onclick="document.getElementById('fileInput').click()" title="Load KMZ / KML">
+            📂 <span class="btn-label">Add KMZ</span>
+        </button>
+        <!-- KMZ filename shown inline in toolbar once a file is loaded -->
+        <span id="kmzFilenameBadge" style="display:none; align-items:center; gap:4px; font-size:12px; font-weight:600; color:#7ecf9a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:160px;"></span>
+
+        <!-- 2. Map type -->
+        <div id="styleWrap" title="Map Style">
+            <select id="styleSelect">
+                <option value="light" selected>☀️ Light</option>
+                <option value="grayscale">🩶 Grayscale</option>
+                <option value="dark">🌙 Dark</option>
+                <option value="white">⬜ White</option>
+                <option value="black">⬛ Black</option>
+            </select>
+        </div>
+
+        <!-- 3. Print this card (visible only when one territory is active) -->
+        <button class="tool-btn" id="printOneBtn" onclick="printActiveCard()" title="Print this card">
+            🖨️ <span class="btn-label">Print This Card</span>
+        </button>
+
+
+
+        <!-- 4. Print all -->
+        <button class="tool-btn" id="printAllBtn" onclick="startBatchPDF()" disabled title="Download all territories as one PDF">
+            🖨️ <span class="btn-label">Print All Maps</span>
+        </button>
+
+        <!-- 5. See maps (toggle panel) -->
+        <button class="tool-btn" id="togglePanelBtn" onclick="togglePanel()" title="Territory List">
+            ☰ <span class="btn-label">See Maps</span>
+        </button>
+    </div>
+
+    <!-- ── Card stage — centred in remaining viewport ─────────────── -->
+    <div id="card-stage">
+        <!-- Card frame is built by JS into here; map div pre-placed inside card-window -->
+        <div id="territory-card-frame">
+            <!-- header and footer injected by buildCardFrame() -->
+            <!-- map window with the live MapLibre instance -->
+            <div id="card-window">
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Side panel ─────────────────────────────────────────────── -->
+    <div id="sidePanel">
+        <div id="sidePanelHeader">
+            <span>Territories</span>
+            <button id="closePanelBtn" onclick="togglePanel()">✕</button>
+        </div>
+        <div id="panelPrintBar">
+            <button id="printSelectedBtn" onclick="printSelectedCards()">🖨️ Print Selected</button>
+            <span id="selCount">0 selected</span>
+        </div>
+        <div id="selectAllRow" onclick="toggleSelectAll()">
+            <input type="checkbox" id="selectAllChk" onclick="event.stopPropagation(); toggleSelectAll()">
+            <span>Select all</span>
+        </div>
+        <div id="sidePanelInner">
+            <div style="padding:24px; text-align:center; color:#888; font-size:13px;">Load a KMZ to begin</div>
+        </div>
+    </div>
+
+    <!-- ── Progress overlay ───────────────────────────────────────── -->
+    <div id="printOverlay">
+        <div class="loader-box">
+            <div id="printStatus">Preparing...</div>
+            <div class="progress-bar"><div id="progressFill"></div></div>
+        </div>
+    </div>
+
+    <script>
+        function togglePanel() {
+            const panel = document.getElementById('sidePanel');
+            const btn   = document.getElementById('togglePanelBtn');
+            panel.classList.toggle('open');
+            btn.classList.toggle('active');
+        }
+    </script>
+    <script src="script.js"></script>
+</body>
+</html>

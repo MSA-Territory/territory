@@ -1,0 +1,107 @@
+body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
+
+/* MAP LAYER */
+#map {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 0;
+    background: #e6e6e6;
+}
+
+/* ── LOAD BUTTON ─────────────────────────────────────────────────── */
+#loadKmzBtn {
+    position: fixed; top: 20px; left: 20px; z-index: 2000;
+    padding: 10px 20px; background: #1a6fc4; color: white;
+    border: none; border-radius: 5px; font-weight: bold; cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transition: background 0.2s;
+    max-width: calc(100vw - 40px);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#loadKmzBtn:hover { background: #155da0; }
+#loadKmzBtn.kmz-loaded { background: #1e8c3a; }
+#loadKmzBtn.kmz-loaded:hover { background: #166d2c; }
+
+/* Filename badge shown below the load button once a file is loaded */
+#kmzFilenameBadge {
+    display: none;
+    position: fixed; top: 58px; left: 20px; z-index: 2000;
+    background: rgba(30, 140, 58, 0.92);
+    color: #fff;
+    font-size: 11px;
+    font-family: sans-serif;
+    padding: 3px 10px;
+    border-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+    max-width: calc(100vw - 40px);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    pointer-events: none;
+}
+#kmzFilenameBadge.visible { display: block; }
+
+/* ── SIDE PANEL ─────────────────────────────────────────────────── */
+#sidePanel {
+    position: fixed; top: 0; right: 0; bottom: 0; width: 260px;
+    background: white; border-left: 1px solid #ccc; z-index: 2000;
+    display: flex; flex-direction: column;
+    box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+}
+#sidePanelInner { flex: 1; overflow-y: auto; }
+
+.side-item {
+    padding: 10px 15px; border-bottom: 1px solid #eee; cursor: pointer;
+    font-size: 14px; display: flex; align-items: center; gap: 8px;
+}
+.side-item:hover { background: #f0f7ff; border-left: 4px solid #1a6fc4; }
+.side-item.active { background: #e8f0fe; border-left: 4px solid #1a6fc4; }
+
+/* ── BUTTONS ──────────────────────────────────────────────────────────── */
+#batchPrintBtn {
+    width: 100%; padding: 15px; background: #28a745; color: white;
+    border: none; font-weight: bold; cursor: pointer; text-transform: uppercase;
+    font-size: 13px;
+}
+#batchPrintBtn:disabled { background: #ccc; cursor: not-allowed; }
+
+/* ── PRINT LOADER ─────────────────────────────────────────────────────── */
+#printOverlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85); z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+}
+.loader-box { background: white; padding: 25px; border-radius: 8px; width: 300px; text-align: center; }
+.progress-bar { height: 8px; background: #eee; border-radius: 4px; margin-top: 15px; overflow: hidden; }
+#progressFill { height: 100%; background: #28a745; width: 0%; transition: width 0.2s; }
+
+/* ── MAPLIBRE ATTRIBUTION — bottom-left, clear of toolbar ────────────── */
+/* Navigation controls stay bottom-right; attribution goes bottom-left        */
+/* so it is never hidden by the slide-in side panel                           */
+.maplibregl-ctrl-bottom-left {
+    bottom: 6px;
+    left: 6px;
+}
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl-attrib {
+    font-size: 10px;
+    background: rgba(255,255,255,0.8);
+    border-radius: 4px;
+    padding: 2px 6px;
+}
+
+/* ── MOBILE ────────────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+    #sidePanel { width: 200px; }
+    .side-item { font-size: 12px; padding: 8px 10px; }
+    #batchPrintBtn { font-size: 11px; padding: 11px 8px; }
+    #loadKmzBtn { top: 10px; left: 10px; padding: 8px 12px; font-size: 12px; }
+    #kmzFilenameBadge { top: 46px; left: 10px; font-size: 10px; }
+}
+
+@media (max-width: 400px) {
+    #sidePanel { width: 160px; }
+    .side-item { font-size: 11px; padding: 7px 8px; }
+}
+
+/* ── HIDE UI WHEN PRINTING ───────────────────────────────────────────────────── */
+@media print {
+    #sidePanel, #loadKmzBtn, #kmzFilenameBadge,
+    .maplibregl-control-container, #printOverlay { display: none !important; }
+}
