@@ -5,26 +5,18 @@
     <title>Territory Card Printer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<!-- MapLibre GL JS -->
-<link href="https://unpkg.com/maplibre-gl@5.19.0/dist/maplibre-gl.css" rel="stylesheet" />
-<script src="https://unpkg.com/maplibre-gl@5.19.0/dist/maplibre-gl.js"></script>
-<!-- PMTiles protocol for self-hosted vector tiles -->
-<script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
-<!-- Protomaps basemap styles -->
-<script src="https://unpkg.com/@protomaps/basemaps@5/dist/basemaps.js"></script>
-<!-- Turf.js geospatial helpers -->
-<script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
-<!-- JSZip for reading KMZ files -->
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<!-- toGeoJSON KML/KMZ parser — UMD build exposes window.toGeoJSON -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/togeojson/0.16.0/togeojson.min.js"></script>
-<!-- jsPDF for PDF generation -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@5.19.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@5.19.0/dist/maplibre-gl.js"></script>
+    <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
+    <script src="https://unpkg.com/@protomaps/basemaps@5/dist/basemaps.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/togeojson/0.16.0/togeojson.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <link rel="stylesheet" href="styles.css">
 
     <style>
-        /* ── Base ────────────────────────────────────────────────── */
         *, *::before, *::after { box-sizing: border-box; }
 
         body {
@@ -33,11 +25,10 @@
             font-family: sans-serif;
             display: flex;
             flex-direction: column;
-            height: 100dvh;        /* dynamic viewport height — safe on mobile */
+            height: 100dvh;
             overflow: hidden;
         }
 
-        /* ── Top toolbar ─────────────────────────────────────────── */
         #toolbar {
             flex-shrink: 0;
             height: 52px;
@@ -70,12 +61,11 @@
         .tool-btn.active { background: #1a6fc4; border-color: #1a6fc4; }
         .tool-btn:disabled { opacity: 0.38; cursor: not-allowed; }
         #printOneBtn { display: none; }
-        /* Badge lives inside toolbar — neutralise any fixed-position rules from styles.css */
         #kmzFilenameBadge { position: static !important; top: auto !important; left: auto !important; }
 
-        /* Style dropdown */
-        #styleWrap { position: relative; height: 36px; }
-        #styleWrap select {
+        /* Shared dropdown style */
+        .drop-wrap { position: relative; height: 36px; }
+        .drop-wrap select {
             height: 36px;
             padding: 0 30px 0 12px;
             border-radius: 7px;
@@ -88,8 +78,8 @@
             appearance: none;
             -webkit-appearance: none;
         }
-        #styleWrap select option { background: #1a2236; color: #fff; }
-        #styleWrap::after {
+        .drop-wrap select option { background: #1a2236; color: #fff; }
+        .drop-wrap::after {
             content: '▾';
             position: absolute;
             right: 10px; top: 50%;
@@ -99,8 +89,6 @@
             font-size: 12px;
         }
 
-
-        /* ── Card stage — fills remaining viewport below toolbar ─── */
         #card-stage {
             flex: 1;
             min-height: 0;
@@ -111,15 +99,10 @@
             overflow: hidden;
         }
 
-        /* ── The card itself ─────────────────────────────────────── */
-        /* 152.4:101.6 = ~1.5:1 landscape ratio.                     */
-        /* We use container-query-style sizing via CSS only:          */
-        /* width is constrained by stage width, height by stage height*/
         #territory-card-frame {
-            /* Fill as much of the stage as possible while keeping ratio */
             width: min(
-                calc(100%),                          /* limited by stage width  */
-                calc((100vh - 52px - 32px) * (152.4 / 101.6))  /* limited by stage height */
+                calc(100%),
+                calc((100vh - 52px - 32px) * (152.4 / 101.6))
             );
             aspect-ratio: 152.4 / 101.6;
             flex-shrink: 0;
@@ -132,7 +115,6 @@
             overflow: hidden;
         }
 
-        /* Map window sits between header and footer — fills remaining space */
         #card-window {
             flex: 1;
             min-height: 0;
@@ -142,7 +124,6 @@
             overflow: hidden;
         }
 
-        /* The MapLibre map fills card-window exactly */
         #map {
             position: absolute;
             inset: 0;
@@ -150,7 +131,6 @@
             height: 100% !important;
         }
 
-        /* ── Side panel ──────────────────────────────────────────── */
         #sidePanel {
             position: fixed;
             top: 52px; right: -320px;
@@ -221,7 +201,6 @@
         .side-item input[type=checkbox] { cursor: pointer; flex-shrink: 0; }
         .side-item-label { flex: 1; }
 
-        /* ── Progress overlay ─────────────────────────────────────── */
         #printOverlay {
             position: fixed; inset: 0;
             background: rgba(0,0,0,0.55);
@@ -239,43 +218,16 @@
         .progress-bar { height: 10px; background: #e0e0e0; border-radius: 5px; overflow: hidden; }
         #progressFill { height: 100%; background: #1a6fc4; border-radius: 5px; transition: width 0.3s; width: 0%; }
 
-        /* ── Mobile tweaks ───────────────────────────────────────── */
         @media (max-width: 600px) {
-            #toolbar {
-                height: 52px;
-                flex-wrap: nowrap;       /* single row always */
-                padding: 4px 6px;
-                gap: 4px;
-            }
-            /* All buttons share the row equally */
-            .tool-btn {
-                flex: 1;
-                height: 42px;
-                padding: 0;
-                font-size: 18px;         /* bigger emoji */
-                gap: 0;
-                justify-content: center;
-                border-radius: 8px;
-            }
-            /* Hide all text labels — emoji only on mobile */
+            #toolbar { height: 52px; flex-wrap: nowrap; padding: 4px 6px; gap: 4px; }
+            .tool-btn { flex: 1; height: 42px; padding: 0; font-size: 18px; gap: 0; justify-content: center; border-radius: 8px; }
             .tool-btn .btn-label { display: none; }
-            /* Style dropdown gets a fixed share too */
-            #styleWrap { flex: 1; height: 42px; }
-            #styleWrap select { width: 100%; height: 42px; font-size: 13px; padding: 0 22px 0 4px; }
-
-            /* KMZ badge — small, doesn't steal button space */
-            #kmzFilenameBadge {
-                flex: 0 0 auto;
-                max-width: 80px;
-                font-size: 10px;
-            }
+            .drop-wrap { flex: 1; height: 42px; }
+            .drop-wrap select { width: 100%; height: 42px; font-size: 11px; padding: 0 18px 0 4px; }
+            #kmzFilenameBadge { flex: 0 0 auto; max-width: 80px; font-size: 10px; }
             #card-stage { padding: 4px; }
-            /* Toolbar is fixed single-row 52px — card calc stays the same */
             #territory-card-frame {
-                width: min(
-                    calc(100%),
-                    calc((100dvh - 52px - 8px) * (152.4 / 101.6))
-                );
+                width: min(calc(100%), calc((100dvh - 52px - 8px) * (152.4 / 101.6)));
             }
             #sidePanel { width: 85vw; right: -86vw; top: 52px; height: calc(100% - 52px); }
             .loader-box { min-width: unset; width: 80vw; padding: 24px 20px; }
@@ -283,7 +235,7 @@
 
         @media (max-width: 380px) {
             .tool-btn { font-size: 16px; }
-            #styleWrap select { font-size: 14px; }
+            .drop-wrap select { font-size: 10px; }
         }
     </style>
 </head>
@@ -291,17 +243,69 @@
 
     <input type="file" id="fileInput" accept=".kmz,.kml" style="display:none;">
 
-    <!-- ── Top toolbar ─────────────────────────────────────────────── -->
     <div id="toolbar">
         <!-- 1. Add KMZ -->
         <button class="tool-btn" onclick="document.getElementById('fileInput').click()" title="Load KMZ / KML">
             📂 <span class="btn-label">Add KMZ</span>
         </button>
-        <!-- KMZ filename shown inline in toolbar once a file is loaded -->
         <span id="kmzFilenameBadge" style="display:none; align-items:center; gap:4px; font-size:12px; font-weight:600; color:#7ecf9a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:160px;"></span>
 
-        <!-- 2. Map type -->
-        <div id="styleWrap" title="Map Style">
+        <!-- 2. City selector -->
+        <div class="drop-wrap" title="Select City">
+            <select id="citySelect">
+                <optgroup label="── Coast ──">
+                    <option value="mombasa" selected>Mombasa</option>
+                    <option value="kilifi">Kilifi</option>
+                    <option value="malindi">Malindi</option>
+                    <option value="watamu">Watamu</option>
+                    <option value="voi">Voi</option>
+                </optgroup>
+                <optgroup label="── Nairobi ──">
+                    <option value="nairobi">Nairobi</option>
+                    <option value="thika">Thika</option>
+                    <option value="kiambu">Kiambu</option>
+                    <option value="ruiru">Ruiru</option>
+                    <option value="limuru">Limuru</option>
+                    <option value="machakos">Machakos</option>
+                    <option value="athiriver">Athi River</option>
+                </optgroup>
+                <optgroup label="── Central ──">
+                    <option value="nyeri">Nyeri</option>
+                    <option value="muranga">Muranga</option>
+                    <option value="nanyuki">Nanyuki</option>
+                    <option value="embu">Embu</option>
+                    <option value="kerugoya">Kerugoya</option>
+                </optgroup>
+                <optgroup label="── Rift Valley ──">
+                    <option value="nakuru">Nakuru</option>
+                    <option value="naivasha">Naivasha</option>
+                    <option value="eldoret">Eldoret</option>
+                    <option value="kericho">Kericho</option>
+                    <option value="kitale">Kitale</option>
+                    <option value="narok">Narok</option>
+                    <option value="bomet">Bomet</option>
+                    <option value="nyahururu">Nyahururu</option>
+                </optgroup>
+                <optgroup label="── Western ──">
+                    <option value="kisumu">Kisumu</option>
+                    <option value="kakamega">Kakamega</option>
+                    <option value="bungoma">Bungoma</option>
+                    <option value="busia">Busia</option>
+                    <option value="kisii">Kisii</option>
+                    <option value="homabay">Homa Bay</option>
+                    <option value="migori">Migori</option>
+                    <option value="siaya">Siaya</option>
+                </optgroup>
+                <optgroup label="── Eastern ──">
+                    <option value="meru">Meru</option>
+                    <option value="kitui">Kitui</option>
+                    <option value="chuka">Chuka</option>
+                </optgroup>
+            </select>
+        </div>
+
+        <!-- 3. Map style -->
+        <div class="drop-wrap" title="Map Style">
             <select id="styleSelect">
                 <option value="light" selected>☀️ Light</option>
                 <option value="grayscale">🩶 Grayscale</option>
@@ -311,37 +315,30 @@
             </select>
         </div>
 
-        <!-- 3. Print this card (visible only when one territory is active) -->
+        <!-- 4. Print this card -->
         <button class="tool-btn" id="printOneBtn" onclick="printActiveCard()" title="Print this card">
-            🖨️ <span class="btn-label">Print This Card</span>
+            🖨️ <span class="btn-label">Print This</span>
         </button>
 
-
-
-        <!-- 4. Print all -->
+        <!-- 5. Print all -->
         <button class="tool-btn" id="printAllBtn" onclick="startBatchPDF()" disabled title="Download all territories as one PDF">
-            🖨️ <span class="btn-label">Print All Maps</span>
+            🖨️ <span class="btn-label">Print All</span>
         </button>
 
-        <!-- 5. See maps (toggle panel) -->
+        <!-- 6. See maps -->
         <button class="tool-btn" id="togglePanelBtn" onclick="togglePanel()" title="Territory List">
             ☰ <span class="btn-label">See Maps</span>
         </button>
     </div>
 
-    <!-- ── Card stage — centred in remaining viewport ─────────────── -->
     <div id="card-stage">
-        <!-- Card frame is built by JS into here; map div pre-placed inside card-window -->
         <div id="territory-card-frame">
-            <!-- header and footer injected by buildCardFrame() -->
-            <!-- map window with the live MapLibre instance -->
             <div id="card-window">
                 <div id="map"></div>
             </div>
         </div>
     </div>
 
-    <!-- ── Side panel ─────────────────────────────────────────────── -->
     <div id="sidePanel">
         <div id="sidePanelHeader">
             <span>Territories</span>
@@ -360,7 +357,6 @@
         </div>
     </div>
 
-    <!-- ── Progress overlay ───────────────────────────────────────── -->
     <div id="printOverlay">
         <div class="loader-box">
             <div id="printStatus">Preparing...</div>
